@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GitForce — Git, ported to Salesforce</title>
+    <meta
+      name="description"
+      content="GitForce is a byte-compatible implementation of Git written in Apex — repositories stored in Salesforce custom objects, a Lightning Web Component UI, and real clone/fetch/push against GitHub over smart-HTTP."
+    />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <meta property="og:title" content="GitForce — Git, ported to Salesforce" />
+    <meta
+      property="og:description"
+      content="A byte-compatible Git implementation in Apex. Same SHA-1 object IDs as real git; clones and pushes to real remotes."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://gitforce.net" />
+    <style>
+      :root {
+        --bg: #0d1117;
+        --bg-soft: #111821;
+        --panel: #161b22;
+        --border: #26303b;
+        --text: #e6edf3;
+        --muted: #9aa7b4;
+        --accent: #f05133; /* git orange-red */
+        --accent-2: #1798c1; /* salesforce cyan-blue */
+        --green: #3fb950;
+        --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo,
+          Consolas, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      a {
+        color: var(--accent-2);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      .wrap {
+        max-width: 1040px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+      code,
+      kbd,
+      pre {
+        font-family: var(--mono);
+      }
+
+      /* Nav */
+      nav {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: rgba(13, 17, 23, 0.85);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--border);
+      }
+      nav .wrap {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 60px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .brand:hover {
+        text-decoration: none;
+      }
+      .brand svg {
+        width: 26px;
+        height: 26px;
+      }
+      .nav-links {
+        display: flex;
+        gap: 22px;
+        align-items: center;
+        font-size: 15px;
+      }
+      .nav-links a {
+        color: var(--muted);
+      }
+      .nav-links a:hover {
+        color: var(--text);
+        text-decoration: none;
+      }
+      .btn {
+        display: inline-block;
+        padding: 10px 18px;
+        border-radius: 8px;
+        font-weight: 600;
+        border: 1px solid var(--border);
+        color: var(--text);
+        transition: 0.15s ease;
+      }
+      .btn:hover {
+        text-decoration: none;
+        border-color: var(--accent);
+      }
+      .btn-primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+      .btn-primary:hover {
+        filter: brightness(1.08);
+        border-color: var(--accent);
+      }
+
+      /* Hero */
+      header.hero {
+        padding: 88px 0 64px;
+        text-align: center;
+        background: radial-gradient(
+          1200px 400px at 50% -10%,
+          rgba(240, 81, 51, 0.14),
+          transparent 60%
+        );
+      }
+      .tag {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--accent);
+        border: 1px solid rgba(240, 81, 51, 0.35);
+        background: rgba(240, 81, 51, 0.08);
+        border-radius: 999px;
+        padding: 5px 14px;
+        margin-bottom: 22px;
+      }
+      h1 {
+        font-size: clamp(38px, 6vw, 62px);
+        line-height: 1.05;
+        margin: 0 0 18px;
+        letter-spacing: -0.02em;
+      }
+      h1 .grad {
+        background: linear-gradient(90deg, var(--accent), var(--accent-2));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .sub {
+        font-size: clamp(17px, 2.3vw, 21px);
+        color: var(--muted);
+        max-width: 720px;
+        margin: 0 auto 34px;
+      }
+      .cta {
+        display: flex;
+        gap: 14px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+
+      /* Terminal */
+      .term {
+        max-width: 760px;
+        margin: 56px auto 0;
+        text-align: left;
+        background: var(--bg-soft);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+      }
+      .term-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border);
+        background: #0f151d;
+      }
+      .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+      }
+      .dot.r {
+        background: #ff5f56;
+      }
+      .dot.y {
+        background: #ffbd2e;
+      }
+      .dot.g {
+        background: #27c93f;
+      }
+      .term-title {
+        margin-left: 8px;
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      pre.term-body {
+        margin: 0;
+        padding: 20px 22px;
+        font-size: 13.5px;
+        line-height: 1.7;
+        overflow-x: auto;
+        color: #c9d4e0;
+      }
+      .term-body .c {
+        color: var(--muted);
+      }
+      .term-body .p {
+        color: var(--accent-2);
+      }
+      .term-body .k {
+        color: var(--accent);
+      }
+      .term-body .ok {
+        color: var(--green);
+      }
+
+      /* Sections */
+      section {
+        padding: 72px 0;
+        border-top: 1px solid var(--border);
+      }
+      .eyebrow {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--accent-2);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        margin-bottom: 10px;
+      }
+      h2 {
+        font-size: clamp(26px, 4vw, 36px);
+        margin: 0 0 14px;
+        letter-spacing: -0.01em;
+      }
+      section > .wrap > p.lead {
+        color: var(--muted);
+        max-width: 720px;
+        font-size: 17px;
+        margin-top: 0;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+        margin-top: 36px;
+      }
+      @media (max-width: 820px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 22px;
+        transition: 0.15s ease;
+      }
+      .card:hover {
+        border-color: #3a4653;
+        transform: translateY(-2px);
+      }
+      .card .ic {
+        font-size: 22px;
+        margin-bottom: 12px;
+      }
+      .card h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+      .card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      /* Byte-compat callout */
+      .callout {
+        background: linear-gradient(
+          180deg,
+          rgba(23, 152, 193, 0.08),
+          rgba(23, 152, 193, 0.02)
+        );
+        border: 1px solid rgba(23, 152, 193, 0.3);
+        border-radius: 14px;
+        padding: 30px;
+        margin-top: 26px;
+      }
+      .callout code {
+        color: var(--accent);
+        background: rgba(240, 81, 51, 0.1);
+        padding: 2px 6px;
+        border-radius: 5px;
+        font-size: 0.92em;
+      }
+      .hashrow {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        gap: 14px;
+        align-items: center;
+        margin-top: 20px;
+        font-family: var(--mono);
+        font-size: 12.5px;
+      }
+      @media (max-width: 680px) {
+        .hashrow {
+          grid-template-columns: 1fr;
+          text-align: center;
+        }
+        .hashrow .eq {
+          transform: rotate(90deg);
+        }
+      }
+      .hashbox {
+        background: var(--bg-soft);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 16px;
+      }
+      .hashbox .lbl {
+        color: var(--muted);
+        font-family: var(--sans);
+        font-size: 12px;
+        margin-bottom: 6px;
+      }
+      .hashbox .val {
+        color: var(--green);
+        word-break: break-all;
+      }
+      .eq {
+        font-size: 26px;
+        color: var(--accent-2);
+        text-align: center;
+      }
+
+      /* Architecture */
+      .layers {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-top: 34px;
+      }
+      @media (max-width: 820px) {
+        .layers {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+      .layer {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 18px;
+      }
+      .layer h4 {
+        margin: 0 0 10px;
+        font-size: 15px;
+        color: var(--accent);
+        font-family: var(--mono);
+      }
+      .layer ul {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .layer li {
+        margin: 4px 0;
+      }
+
+      /* Install */
+      .install pre {
+        background: var(--bg-soft);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 20px 22px;
+        overflow-x: auto;
+        font-size: 13.5px;
+        line-height: 1.7;
+        color: #c9d4e0;
+      }
+      .install .note {
+        color: var(--muted);
+        font-size: 14px;
+        margin-top: 14px;
+      }
+      .pill {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 3px 8px;
+        margin: 2px 4px 2px 0;
+      }
+
+      footer {
+        border-top: 1px solid var(--border);
+        padding: 40px 0 60px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      footer .wrap {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+      .disclaimer {
+        max-width: 560px;
+        font-size: 12.5px;
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <div class="wrap">
+        <a class="brand" href="#top">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M23.1 10.5 13.5.9a1.9 1.9 0 0 0-2.7 0l-2 2 2.5 2.6a2.3 2.3 0 0 1 2.9 2.9l2.5 2.4a2.3 2.3 0 1 1-1.4 1.3l-2.3-2.3v6a2.3 2.3 0 1 1-1.9 0V9.6a2.3 2.3 0 0 1-1.2-3l-2.5-2.5-6.6 6.5a1.9 1.9 0 0 0 0 2.7l9.6 9.6a1.9 1.9 0 0 0 2.7 0l9.5-9.5a1.9 1.9 0 0 0 0-2.7"
+              fill="#f05133"
+            />
+          </svg>
+          GitForce
+        </a>
+        <div class="nav-links">
+          <a href="#features">Features</a>
+          <a href="#byte-compat">Byte-compat</a>
+          <a href="#architecture">Architecture</a>
+          <a href="#install">Install</a>
+        </div>
+      </div>
+    </nav>
+
+    <a id="top"></a>
+    <header class="hero">
+      <div class="wrap">
+        <span class="tag">git, reimplemented in Apex</span>
+        <h1>Git, ported to<br /><span class="grad">Salesforce</span>.</h1>
+        <p class="sub">
+          GitForce is a <strong>byte-compatible</strong> implementation of Git
+          written entirely in Apex — repositories live inside Salesforce custom
+          objects, driven by a Lightning Web Component UI, with real
+          <strong>clone / fetch / push</strong> against GitHub over the Git
+          smart-HTTP protocol.
+        </p>
+        <div class="cta">
+          <a class="btn btn-primary" href="#install">Install the package</a>
+          <a class="btn" href="#byte-compat">How is that even possible?</a>
+        </div>
+
+        <div class="term">
+          <div class="term-bar">
+            <span class="dot r"></span><span class="dot y"></span
+            ><span class="dot g"></span>
+            <span class="term-title">Anonymous Apex — GitForce</span>
+          </div>
+          <pre class="term-body"><span class="c">// Create a repo, stage a file, commit — entirely in Apex</span>
+<span class="k">Id</span> repo = GitRepo.init(<span class="p">'hello'</span>);
+GitAdd.stage(repo, <span class="p">'README.md'</span>, Blob.valueOf(<span class="p">'# hi\n'</span>));
+<span class="k">String</span> sha = GitCommit.create(repo, me, me, <span class="p">'first commit'</span>);
+
+System.debug(sha);
+<span class="c">// => 8d3c1f...  the exact SHA-1 real `git` would compute</span>
+
+<span class="c">// ...then push it to a real GitHub remote</span>
+GitRemote.push(repo, <span class="p">'refs/heads/main'</span>);
+<span class="ok">✔ pushed to github.com — objects match byte-for-byte</span></pre>
+        </div>
+      </div>
+    </header>
+
+    <section id="features">
+      <div class="wrap">
+        <div class="eyebrow">What it does</div>
+        <h2>A real Git engine, on a platform that already has the pieces</h2>
+        <p class="lead">
+          Salesforce has a database, an HTTP stack, native SHA-1, and Apex —
+          which turns out to be just enough to host Git's content-addressable
+          object model end to end.
+        </p>
+        <div class="grid">
+          <div class="card">
+            <div class="ic">🔗</div>
+            <h3>Byte-compatible objects</h3>
+            <p>
+              Blobs, trees, commits and tags hash to the <em>exact</em> SHA-1
+              object IDs real Git produces — verified against the <code>git</code> CLI.
+            </p>
+          </div>
+          <div class="card">
+            <div class="ic">🗜️</div>
+            <h3>Pure-Apex zlib</h3>
+            <p>
+              A hand-rolled DEFLATE decoder (fixed + dynamic Huffman, LZ77) and a
+              stored-block encoder — so it reads and writes real zlib streams.
+            </p>
+          </div>
+          <div class="card">
+            <div class="ic">📦</div>
+            <h3>Packfiles &amp; deltas</h3>
+            <p>
+              Parses delta-compressed packfiles (OFS_DELTA / REF_DELTA) and
+              encodes packs to send — the payloads real clone/fetch/push use.
+            </p>
+          </div>
+          <div class="card">
+            <div class="ic">🌐</div>
+            <h3>Smart-HTTP transport</h3>
+            <p>
+              A pkt-line codec and smart-HTTP client talk to real Git servers.
+              Clone a public repo into the org; push a commit back to GitHub.
+            </p>
+          </div>
+          <div class="card">
+            <div class="ic">🧬</div>
+            <h3>Full porcelain</h3>
+            <p>
+              add · status · commit · log · branch · checkout · diff (Myers) ·
+              merge (fast-forward &amp; 3-way with a real merge base).
+            </p>
+          </div>
+          <div class="card">
+            <div class="ic">🖥️</div>
+            <h3>A GitHub-style UI</h3>
+            <p>
+              A Lightning app renders the repo home, file browser, commit diffs,
+              issues, pull requests, and projects — all backed by Apex.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="byte-compat">
+      <div class="wrap">
+        <div class="eyebrow">The load-bearing idea</div>
+        <h2>"Byte-compatible" is what makes it a port, not a toy</h2>
+        <p class="lead">
+          GitForce computes the same object hash you'd get from running
+          <code>git</code> on your laptop. That property is what lets it
+          interoperate with real remotes instead of being a Git-flavored
+          imitation — and it's checked by a harness that diffs GitForce output
+          against fixtures generated by the real Git CLI.
+        </p>
+        <div class="callout">
+          <div>
+            Hashing the blob <code>"hello\n"</code> — canonical form
+            <code>"blob 6\0hello\n"</code> through SHA-1:
+          </div>
+          <div class="hashrow">
+            <div class="hashbox">
+              <div class="lbl">$ git hash-object</div>
+              <div class="val">ce013625030ba8dba906f756967f9e9ca394464a</div>
+            </div>
+            <div class="eq">=</div>
+            <div class="hashbox">
+              <div class="lbl">GitForce (Apex)</div>
+              <div class="val">ce013625030ba8dba906f756967f9e9ca394464a</div>
+            </div>
+          </div>
+        </div>
+        <p class="lead" style="margin-top: 26px">
+          Verified end-to-end: a live network clone of GitHub's
+          <code>octocat/Hello-World</code> reproduces commit
+          <code>7fd1a60b…</code> exactly — proving the transport stack and
+          byte-compatibility against a real remote.
+        </p>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <div class="wrap">
+        <div class="eyebrow">Under the hood</div>
+        <h2>Four layers, all in Apex</h2>
+        <p class="lead">
+          Git's content-addressable store maps cleanly onto Salesforce custom
+          objects; the plumbing reproduces Git's canonical encoding; the
+          transport layer speaks the wire protocol; and the surface exposes it
+          to LWC, REST, and Flow.
+        </p>
+        <div class="layers">
+          <div class="layer">
+            <h4>Storage</h4>
+            <ul>
+              <li>Repository__c</li>
+              <li>Git_Object__c (by SHA)</li>
+              <li>Git_Ref__c / HEAD</li>
+              <li>Git_Index_Entry__c</li>
+            </ul>
+          </div>
+          <div class="layer">
+            <h4>Plumbing</h4>
+            <ul>
+              <li>GitSha (native SHA-1)</li>
+              <li>GitObjectCodec</li>
+              <li>object / ref stores</li>
+              <li>staging index</li>
+            </ul>
+          </div>
+          <div class="layer">
+            <h4>Transport</h4>
+            <ul>
+              <li>Zlib (inflate/deflate)</li>
+              <li>PktLine · Packfile</li>
+              <li>GitDelta resolver</li>
+              <li>smart-HTTP client</li>
+            </ul>
+          </div>
+          <div class="layer">
+            <h4>Surface</h4>
+            <ul>
+              <li>@AuraEnabled controller</li>
+              <li>gitForceApp LWC</li>
+              <li>@RestResource API</li>
+              <li>Invocable (Flow)</li>
+            </ul>
+          </div>
+        </div>
+        <p class="lead" style="margin-top: 28px">
+          Governor limits are respected honestly — SHA-1 is native and cheap;
+          CPU-heavy inflate runs in async jobs; the callout response cap bounds
+          clone size. The trade-offs are documented, not hidden.
+        </p>
+      </div>
+    </section>
+
+    <section id="install" class="install">
+      <div class="wrap">
+        <div class="eyebrow">Get it</div>
+        <h2>Install the managed package</h2>
+        <p class="lead">
+          GitForce ships as a namespaced (<code>gitforce</code>) Unlocked 2GP
+          package. Install it into any Salesforce org:
+        </p>
+        <pre><span class="c"># Salesforce CLI</span>
+sf package install --package 04tDo00000012ETIAY \
+  --target-org &lt;your-org&gt; --wait 20 --publish-wait 20</pre>
+        <p class="note">
+          Or open the install URL in a browser (log in to the target org first):
+          <br />
+          <a
+            href="https://login.salesforce.com/packaging/installPackage.apexp?p0=04tDo00000012ETIAY"
+            >login.salesforce.com/packaging/installPackage.apexp?p0=04tDo00000012ETIAY</a
+          >
+        </p>
+        <p class="note">
+          After install, open the <strong>GitForce</strong> app. To use remotes,
+          add your own GitHub token to the packaged
+          <code>GitForce_GitHub</code> Named Credential — no secret ships in the
+          package.
+        </p>
+        <div style="margin-top: 18px">
+          <span class="pill">Unlocked 2GP</span>
+          <span class="pill">namespace: gitforce</span>
+          <span class="pill">v0.1.0.1</span>
+          <span class="pill">MIT licensed</span>
+          <span class="pill">API 62.0</span>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap">
+        <div>
+          <strong style="color: var(--text)">GitForce</strong> · Git, ported to
+          Salesforce.<br />
+          <a href="https://login.salesforce.com/packaging/installPackage.apexp?p0=04tDo00000012ETIAY">Install</a>
+          · MIT License © 2026 Dustin Kost
+        </div>
+        <div class="disclaimer">
+          GitForce is an independent project and is not affiliated with or
+          endorsed by the Git project, Software Freedom Conservancy, GitHub, or
+          Salesforce. "Git" and "Salesforce" are trademarks of their respective
+          owners.
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
